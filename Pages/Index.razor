@@ -1,0 +1,124 @@
+﻿@page "/"
+@inject JsonPlaceHolderClient _jsonPlaceHolderClient;
+@inject IJSRuntime _js;
+
+<h1>All Posts</h1>
+<button class="btn btn-primary" @onclick='@(e => OpenModal(0,"add"))'>Add Post</button>
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th scope="col">Id</th>
+            <th scope="col">Title</th>
+            <th scope="col">Description</th>
+            <th scope="col">Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var post in allposts)
+        {
+            <tr>
+                <td>@post.Id</td>
+                <td>@post.Title</td>
+                <td>@post.Body</td>
+                <td>
+                    <button type="button" class="btn btn-primary"
+                        @onclick='@(e => OpenModal(post.Id,"update"))'>Edit</button>
+                        |
+                    <button type="button" class="btn btn-primary"
+                        @onclick='@(e => DeletePost(post.Id))'>Delete</button>    
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<!-- Html for Model for for creating or updating 'post' data -->
+<div class="modal" tabindex="-1" role="dialog" id="myModal">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">@formTitle</h5>
+                <button type="button" class="close" @onclick="(e => CloseModal())" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="txtTitle">Title</label>
+                    <input type="text" class="form-control" id="txtTitle" @bind="payload.Title">
+                </div>
+                <div class="form-group">
+                    <label for="txtDescription">Description</label>
+                    <input type="text" class="form-control" id="txtDescription" @bind="payload.Body">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" @onclick="(e => CreateOrUpdatePost())">Save changes</button>
+                <button type="button" class="btn btn-secondary" @onclick="(e => CloseModal())">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code{
+    private List<Post> allposts = new List<Post>();
+    private Post payload = new Post();
+
+    string formTitle = "";
+    protected override async Task OnInitializedAsync()
+    {
+        allposts = await _jsonPlaceHolderClient.GetAllPost();
+    }
+
+    private async Task OpenModal(int postId, string operationType)
+    {
+        if (operationType.ToLower() == "add")
+        {
+            formTitle = "Add Post";
+            payload = new Post();
+            await _js.InvokeVoidAsync("global.openModal", "myModal");
+        }
+        else
+        {
+            formTitle = "update Post";
+            payload = allposts.Where(_ => _.Id == postId).FirstOrDefault();
+            await _js.InvokeVoidAsync("global.openModal", "myModal");
+        }
+    }
+
+    private async Task CloseModal()
+    {
+        await _js.InvokeVoidAsync("global.closeModal", "myModal");
+    }
+
+    private async Task CreateOrUpdatePost()
+    {
+        if (payload.Id == 0)
+        {
+            // for adding new record
+            var newRecord = await _jsonPlaceHolderClient.CreateOrUpdatePost(payload);
+
+            #region logic-only-for-demo
+            int lastRecordId = allposts.OrderByDescending(_ => _.Id).Select(_ => _.Id).FirstOrDefault();
+            newRecord.Id = lastRecordId + 1;
+            #endregion
+            allposts.Insert(0, newRecord);
+            await CloseModal();
+        }
+        else
+        {
+            var updatedRecord = await _jsonPlaceHolderClient.CreateOrUpdatePost(payload);
+
+            allposts = allposts.Where(_ => _.Id != updatedRecord.Id).ToList();
+
+            allposts.Insert(0, updatedRecord);
+            await CloseModal();
+        }
+    }
+
+    private async Task DeletePost(int id)
+    {
+        await _jsonPlaceHolderClient.DeletePost(id);
+        allposts = allposts.Where(_ => _.Id != id).ToList();
+    }
+}
